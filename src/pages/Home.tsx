@@ -2,15 +2,39 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Menu, Bell } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Calendar, Clock, LogOut, User, BookOpen, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SwipeableClassCard } from "@/components/SwipeableClassCard";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { format, isToday } from "date-fns";
+
+interface ClassInfo {
+  id: string;
+  subject_name: string;
+  subject_code: string;
+  professor_name: string;
+  start_time: string;
+  end_time: string;
+  room: string;
+  class_type: string;
+}
+
+interface AttendanceStatus {
+  timetable_id: string;
+  status: "present" | "absent" | "pending";
+}
 
 const Home = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [userName, setUserName] = useState("Student");
+  const [userSection, setUserSection] = useState("");
   const [loading, setLoading] = useState(true);
+  const [todayClasses, setTodayClasses] = useState<ClassInfo[]>([]);
+  const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatus[]>([]);
+  const [attendancePercentage, setAttendancePercentage] = useState(0);
 
   useEffect(() => {
     checkUser();
@@ -24,18 +48,160 @@ const Home = () => {
       return;
     }
 
-    // Fetch user profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("id", user.id)
-      .single();
+    try {
+      // Fetch user profile
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, section")
+        .eq("id", user.id)
+        .single();
 
-    if (profile?.full_name) {
-      setUserName(profile.full_name.split(" ")[0]);
+      if (profileError) throw profileError;
+
+      if (!profile.section) {
+        toast({
+          title: "Profile incomplete",
+          description: "Please complete your profile setup",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (profile?.full_name) {
+        setUserName(profile.full_name.split(" ")[0]);
+      }
+      setUserSection(profile.section);
+
+      // Fetch today's timetable
+      const today = new Date().getDay();
+      const dayOfWeek = today === 0 ? 6 : today - 1; // Convert to 0=Monday
+
+      const { data: classes, error: classesError } = await supabase
+        .from("timetable")
+        .select("*")
+        .eq("section", profile.section)
+        .eq("day_of_week", dayOfWeek)
+        .order("start_time");
+
+      if (classesError) throw classesError;
+      setTodayClasses(classes || []);
+
+      // Fetch today's attendance
+      const todayDate = format(new Date(), "yyyy-MM-dd");
+      const { data: attendance, error: attendanceError } = await supabase
+        .from("attendance_records")
+        .select("timetable_id, status")
+        .eq("student_id", user.id)
+        .eq("date", todayDate);
+
+      if (attendanceError) throw attendanceError;
+      setAttendanceStatus((attendance || []) as AttendanceStatus[]);
+
+      // Calculate overall attendance percentage
+      const { data: allAttendance } = await supabase
+        .from("attendance_records")
+        .select("status")
+        .eq("student_id", user.id);
+
+      if (allAttendance && allAttendance.length > 0) {
+        const present = allAttendance.filter(a => a.status === "present").length;
+        setAttendancePercentage((present / allAttendance.length) * 100);
+      }
+
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleSwipe = async (classInfo: ClassInfo, direction: "left" | "right") => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const status = direction === "right" ? "present" : "absent";
+    const todayDate = format(new Date(), "yyyy-MM-dd");
+
+    try {
+      const { error } = await supabase
+        .from("attendance_records")
+        .upsert({
+          student_id: user.id,
+          timetable_id: classInfo.id,
+          date: todayDate,
+          status,
+          marked_at: new Date().toISOString(),
+        }, {
+          onConflict: 'student_id,timetable_id,date'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: `Marked ${status}`,
+        description: `${classInfo.subject_name} - ${status === "present" ? "✓" : "✗"}`,
+      });
+
+      // Refresh attendance status
+      const { data: attendance } = await supabase
+        .from("attendance_records")
+        .select("timetable_id, status")
+        .eq("student_id", user.id)
+        .eq("date", todayDate);
+
+      setAttendanceStatus((attendance || []) as AttendanceStatus[]);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const canMarkAttendance = (startTime: string) => {
+    const now = new Date();
+    const [hours, minutes] = startTime.split(":").map(Number);
+    const classTime = new Date();
+    classTime.setHours(hours, minutes, 0);
     
-    setLoading(false);
+    const diff = (now.getTime() - classTime.getTime()) / (1000 * 60);
+    return diff >= -30 && diff <= 30;
+  };
+
+  const isClassPast = (endTime: string) => {
+    const now = new Date();
+    const [hours, minutes] = endTime.split(":").map(Number);
+    const classEndTime = new Date();
+    classEndTime.setHours(hours, minutes, 0);
+    
+    return now > classEndTime;
+  };
+
+  const isClassCurrent = (startTime: string, endTime: string) => {
+    const now = new Date();
+    const [startHours, startMinutes] = startTime.split(":").map(Number);
+    const [endHours, endMinutes] = endTime.split(":").map(Number);
+    
+    const classStart = new Date();
+    classStart.setHours(startHours, startMinutes, 0);
+    const classEnd = new Date();
+    classEnd.setHours(endHours, endMinutes, 0);
+    
+    return now >= classStart && now <= classEnd;
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast({
+      title: "Logged out",
+      description: "See you soon!",
+    });
+    navigate("/login");
   };
 
   const getGreeting = () => {
@@ -47,236 +213,134 @@ const Home = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+      <div className="min-h-screen bg-background p-6">
+        <Skeleton className="h-32 w-full mb-6 rounded-3xl" />
+        <Skeleton className="h-24 w-full mb-4 rounded-2xl" />
+        <Skeleton className="h-48 w-full rounded-2xl" />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background pb-20">
-      {/* Decorative Header Background */}
-      <div className="relative bg-primary h-48 rounded-b-[3rem] overflow-hidden">
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1200 300">
-          <path d="M0,100 Q300,50 600,100 T1200,100 L1200,0 L0,0 Z" fill="hsl(var(--accent))" opacity="0.5"/>
-        </svg>
-        
-        {/* Header Content */}
-        <div className="relative z-10 px-6 py-4">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <Avatar className="w-12 h-12 border-2 border-primary-foreground/20">
-                <AvatarFallback className="bg-card text-foreground">
-                  {userName.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-primary-foreground font-semibold text-lg">Stadhunt</span>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10">
-                <Search className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10">
-                <Menu className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Greeting */}
-          <div className="flex items-start justify-between">
+      {/* Header */}
+      <div className="bg-gradient-to-br from-primary/10 to-accent/10 pt-8 pb-6 px-6 rounded-b-[2rem]">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Avatar className="w-12 h-12 border-2 border-primary">
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                {userName.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
             <div>
-              <h1 className="text-3xl font-bold text-primary-foreground mb-1">
-                {getGreeting()},
-              </h1>
-              <h2 className="text-3xl font-bold text-primary-foreground">{userName}.</h2>
+              <p className="text-xs text-muted-foreground">Section {userSection}</p>
+              <p className="font-semibold text-foreground">JSS Students</p>
             </div>
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10">
-              <Bell className="w-6 h-6" />
-            </Button>
           </div>
+          
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleLogout}
+            className="text-destructive hover:bg-destructive/10"
+          >
+            <LogOut className="w-5 h-5" />
+          </Button>
+        </div>
+
+        <div>
+          <h1 className="text-3xl font-bold text-foreground mb-1">
+            {getGreeting()},
+          </h1>
+          <h2 className="text-3xl font-bold text-foreground">{userName}.</h2>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="px-6 -mt-12 relative z-20">
-        {/* Quick Access Cards */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <Card className="bg-accent rounded-3xl p-4 shadow-[var(--shadow-soft)] min-h-[160px] flex flex-col">
-            <h3 className="text-accent-foreground font-semibold text-sm mb-2">Attendance</h3>
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-accent-foreground">85%</div>
-                <div className="text-xs text-accent-foreground/70 mt-1">This Month</div>
-              </div>
-            </div>
+      {/* Quick Stats */}
+      <div className="px-6 -mt-8 mb-6">
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="p-4 bg-card shadow-[var(--shadow-soft)]" onClick={() => navigate("/attendance")}>
+            <BarChart3 className="w-6 h-6 text-primary mb-2" />
+            <p className="text-2xl font-bold text-foreground">{attendancePercentage.toFixed(0)}%</p>
+            <p className="text-xs text-muted-foreground">Attendance</p>
           </Card>
-
-          <Card className="bg-card rounded-3xl p-4 shadow-[var(--shadow-soft)] min-h-[160px] flex flex-col">
-            <h3 className="text-foreground font-semibold text-sm mb-2">Slots</h3>
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">6/8</div>
-                <div className="text-xs text-muted-foreground mt-1">Classes Today</div>
-              </div>
-            </div>
+          <Card className="p-4 bg-card shadow-[var(--shadow-soft)]" onClick={() => navigate("/timetable")}>
+            <Calendar className="w-6 h-6 text-primary mb-2" />
+            <p className="text-2xl font-bold text-foreground">{todayClasses.length}</p>
+            <p className="text-xs text-muted-foreground">Classes Today</p>
           </Card>
-
-          <Card className="bg-card rounded-3xl p-4 shadow-[var(--shadow-soft)] min-h-[160px] flex flex-col">
-            <h3 className="text-foreground font-semibold text-sm mb-2">Events</h3>
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">3</div>
-                <div className="text-xs text-muted-foreground mt-1">Upcoming</div>
-              </div>
-            </div>
+          <Card className="p-4 bg-card shadow-[var(--shadow-soft)]">
+            <BookOpen className="w-6 h-6 text-primary mb-2" />
+            <p className="text-2xl font-bold text-foreground">-</p>
+            <p className="text-xs text-muted-foreground">Assignments</p>
           </Card>
         </div>
+      </div>
 
-        {/* Dashboard Sections */}
-        <Card className="bg-card rounded-3xl shadow-[var(--shadow-medium)] p-6">
-          <h2 className="text-xl font-bold text-foreground mb-4">Student Dashboard</h2>
-          
-          <Tabs defaultValue="timetable" className="w-full">
-            <TabsList className="w-full grid grid-cols-3 mb-4">
-              <TabsTrigger value="timetable">Timetable</TabsTrigger>
-              <TabsTrigger value="assignments">Assignments</TabsTrigger>
-              <TabsTrigger value="pyq">PYQ</TabsTrigger>
-            </TabsList>
+      {/* Today's Classes */}
+      <div className="px-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-foreground">Today's Classes</h2>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => navigate("/timetable")}
+            className="text-primary"
+          >
+            View All
+          </Button>
+        </div>
 
-            <TabsContent value="timetable" className="space-y-3">
-              <div className="bg-muted rounded-2xl p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Mathematics</h4>
-                    <p className="text-sm text-muted-foreground">Prof. Kumar</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-primary">9:00 AM</p>
-                    <p className="text-xs text-muted-foreground">Room 301</p>
-                  </div>
-                </div>
-              </div>
+        <div className="space-y-3">
+          {todayClasses.length === 0 ? (
+            <Card className="p-8 text-center bg-card">
+              <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground">No classes today</p>
+              <p className="text-sm text-muted-foreground mt-1">Enjoy your day off!</p>
+            </Card>
+          ) : (
+            todayClasses.map((classInfo) => {
+              const attendance = attendanceStatus.find(a => a.timetable_id === classInfo.id);
+              const isPast = isClassPast(classInfo.end_time);
+              const isCurrent = isClassCurrent(classInfo.start_time, classInfo.end_time);
+              const canMark = canMarkAttendance(classInfo.start_time) && !attendance;
 
-              <div className="bg-muted rounded-2xl p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Physics</h4>
-                    <p className="text-sm text-muted-foreground">Dr. Sharma</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-primary">11:00 AM</p>
-                    <p className="text-xs text-muted-foreground">Lab 2</p>
-                  </div>
-                </div>
-              </div>
+              return (
+                <SwipeableClassCard
+                  key={classInfo.id}
+                  classInfo={classInfo}
+                  status={attendance?.status}
+                  isPast={isPast}
+                  isCurrent={isCurrent}
+                  canMark={canMark}
+                  onSwipe={(direction) => handleSwipe(classInfo, direction)}
+                />
+              );
+            })
+          )}
+        </div>
+      </div>
 
-              <div className="bg-muted rounded-2xl p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Chemistry</h4>
-                    <p className="text-sm text-muted-foreground">Prof. Patel</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-primary">2:00 PM</p>
-                    <p className="text-xs text-muted-foreground">Room 205</p>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="assignments" className="space-y-3">
-              <div className="bg-destructive/10 rounded-2xl p-4 border border-destructive/20">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Data Structures Assignment</h4>
-                    <p className="text-sm text-muted-foreground mt-1">Implement Binary Tree</p>
-                  </div>
-                  <span className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded-full">
-                    Due Soon
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">Due: Tomorrow, 11:59 PM</p>
-              </div>
-
-              <div className="bg-muted rounded-2xl p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Web Development Project</h4>
-                    <p className="text-sm text-muted-foreground mt-1">Create a responsive portfolio</p>
-                  </div>
-                  <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded-full">
-                    3 days
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">Due: Dec 15, 2024</p>
-              </div>
-
-              <div className="bg-muted rounded-2xl p-4 opacity-60">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Physics Lab Report</h4>
-                    <p className="text-sm text-muted-foreground mt-1">Newton's Laws Experiment</p>
-                  </div>
-                  <span className="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded-full">
-                    Submitted
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">Submitted: Dec 10, 2024</p>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="pyq" className="space-y-3">
-              <div className="bg-muted rounded-2xl p-4 hover:bg-muted/70 transition-colors cursor-pointer">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Mathematics - 2023</h4>
-                    <p className="text-sm text-muted-foreground">Semester 1 Final Exam</p>
-                  </div>
-                  <Button size="sm" variant="outline" className="rounded-full">
-                    View
-                  </Button>
-                </div>
-              </div>
-
-              <div className="bg-muted rounded-2xl p-4 hover:bg-muted/70 transition-colors cursor-pointer">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Physics - 2023</h4>
-                    <p className="text-sm text-muted-foreground">Semester 1 Mid-term</p>
-                  </div>
-                  <Button size="sm" variant="outline" className="rounded-full">
-                    View
-                  </Button>
-                </div>
-              </div>
-
-              <div className="bg-muted rounded-2xl p-4 hover:bg-muted/70 transition-colors cursor-pointer">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Chemistry - 2022</h4>
-                    <p className="text-sm text-muted-foreground">Semester 2 Final Exam</p>
-                  </div>
-                  <Button size="sm" variant="outline" className="rounded-full">
-                    View
-                  </Button>
-                </div>
-              </div>
-
-              <div className="bg-muted rounded-2xl p-4 hover:bg-muted/70 transition-colors cursor-pointer">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-semibold text-foreground">Data Structures - 2023</h4>
-                    <p className="text-sm text-muted-foreground">Semester 1 Final Exam</p>
-                  </div>
-                  <Button size="sm" variant="outline" className="rounded-full">
-                    View
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </Card>
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border px-6 py-3 shadow-[0_-4px_20px_-2px_hsl(var(--shadow-soft))]">
+        <div className="flex items-center justify-around max-w-md mx-auto">
+          <Button variant="ghost" size="sm" className="flex-col h-auto py-2" onClick={() => navigate("/home")}>
+            <Calendar className="w-5 h-5 mb-1 text-primary" />
+            <span className="text-xs text-primary font-medium">Home</span>
+          </Button>
+          <Button variant="ghost" size="sm" className="flex-col h-auto py-2" onClick={() => navigate("/timetable")}>
+            <Clock className="w-5 h-5 mb-1" />
+            <span className="text-xs">Timetable</span>
+          </Button>
+          <Button variant="ghost" size="sm" className="flex-col h-auto py-2" onClick={() => navigate("/attendance")}>
+            <BarChart3 className="w-5 h-5 mb-1" />
+            <span className="text-xs">Attendance</span>
+          </Button>
+          <Button variant="ghost" size="sm" className="flex-col h-auto py-2">
+            <User className="w-5 h-5 mb-1" />
+            <span className="text-xs">Profile</span>
+          </Button>
+        </div>
       </div>
     </div>
   );
