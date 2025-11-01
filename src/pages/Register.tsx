@@ -74,7 +74,7 @@ const Register = () => {
         });
         
         // Redirect to home page
-        navigate("/");
+        navigate("/home");
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
