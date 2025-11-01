@@ -14,26 +14,140 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_records: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          marked_at: string | null
+          status: string
+          student_id: string
+          timetable_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          marked_at?: string | null
+          status: string
+          student_id: string
+          timetable_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          marked_at?: string | null
+          status?: string
+          student_id?: string
+          timetable_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_records_timetable_id_fkey"
+            columns: ["timetable_id"]
+            isOneToOne: false
+            referencedRelation: "timetable"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
+          avatar_url: string | null
+          batch: string | null
+          branch: string | null
           college_id: string
           created_at: string
           full_name: string
           id: string
+          roll_number: string | null
+          section: string | null
+          semester: number | null
           updated_at: string
+          year: number | null
         }
         Insert: {
+          avatar_url?: string | null
+          batch?: string | null
+          branch?: string | null
           college_id: string
           created_at?: string
           full_name: string
           id: string
+          roll_number?: string | null
+          section?: string | null
+          semester?: number | null
           updated_at?: string
+          year?: number | null
         }
         Update: {
+          avatar_url?: string | null
+          batch?: string | null
+          branch?: string | null
           college_id?: string
           created_at?: string
           full_name?: string
           id?: string
+          roll_number?: string | null
+          section?: string | null
+          semester?: number | null
+          updated_at?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
+      timetable: {
+        Row: {
+          class_type: string
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          professor_name: string
+          room: string | null
+          section: string
+          start_time: string
+          subject_code: string
+          subject_name: string
+          updated_at: string
+        }
+        Insert: {
+          class_type: string
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          professor_name: string
+          room?: string | null
+          section: string
+          start_time: string
+          subject_code: string
+          subject_name: string
+          updated_at?: string
+        }
+        Update: {
+          class_type?: string
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          professor_name?: string
+          room?: string | null
+          section?: string
+          start_time?: string
+          subject_code?: string
+          subject_name?: string
           updated_at?: string
         }
         Relationships: []
