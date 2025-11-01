@@ -11,7 +11,9 @@ import { z } from "zod";
 const registerSchema = z.object({
   fullName: z.string().trim().min(1, "Name is required").max(100, "Name must be less than 100 characters"),
   email: z.string().trim().email("Invalid email address").max(255, "Email must be less than 255 characters"),
-  collegeId: z.string().trim().min(1, "College ID is required").max(50, "College ID must be less than 50 characters"),
+  branch: z.string().min(1, "Branch is required"),
+  section: z.string().min(1, "Section is required"),
+  rollNumber: z.string().trim().min(1, "Roll number is required").max(20, "Roll number must be less than 20 characters"),
   password: z.string().min(6, "Password must be at least 6 characters").max(100, "Password must be less than 100 characters"),
 });
 
@@ -20,9 +22,20 @@ const Register = () => {
   const { toast } = useToast();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [collegeId, setCollegeId] = useState("");
+  const [branch, setBranch] = useState("");
+  const [section, setSection] = useState("");
+  const [rollNumber, setRollNumber] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const branchOptions = [
+    { value: "CSE Core", label: "CSE Core", sections: ["A2", "A3"] },
+    { value: "CS-AIML", label: "CS-AIML", sections: ["A4", "A5", "A6"] },
+    { value: "IT", label: "IT", sections: ["B1", "B2", "B3"] },
+    { value: "CS-DS", label: "CS-DS", sections: ["B4"] },
+  ];
+
+  const availableSections = branchOptions.find(b => b.value === branch)?.sections || [];
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +46,9 @@ const Register = () => {
       const validatedData = registerSchema.parse({
         fullName,
         email,
-        collegeId,
+        branch,
+        section,
+        rollNumber,
         password,
       });
 
@@ -45,7 +60,10 @@ const Register = () => {
           emailRedirectTo: `${window.location.origin}/`,
           data: {
             full_name: validatedData.fullName,
-            college_id: validatedData.collegeId,
+            college_id: validatedData.rollNumber,
+            branch: validatedData.branch,
+            section: validatedData.section,
+            roll_number: validatedData.rollNumber,
           },
         },
       });
@@ -158,19 +176,72 @@ const Register = () => {
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label 
+                  htmlFor="branch" 
+                  className="text-sm font-medium text-foreground"
+                >
+                  Branch
+                </Label>
+                <select
+                  id="branch"
+                  value={branch}
+                  onChange={(e) => {
+                    setBranch(e.target.value);
+                    setSection("");
+                  }}
+                  className="h-12 w-full rounded-2xl bg-input border border-border px-4 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-[var(--transition-smooth)]"
+                  required
+                  disabled={isLoading}
+                >
+                  <option value="">Select Branch</option>
+                  {branchOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label 
+                  htmlFor="section" 
+                  className="text-sm font-medium text-foreground"
+                >
+                  Section
+                </Label>
+                <select
+                  id="section"
+                  value={section}
+                  onChange={(e) => setSection(e.target.value)}
+                  className="h-12 w-full rounded-2xl bg-input border border-border px-4 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-[var(--transition-smooth)]"
+                  required
+                  disabled={isLoading || !branch}
+                >
+                  <option value="">Select Section</option>
+                  {availableSections.map((sec) => (
+                    <option key={sec} value={sec}>
+                      {sec}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label 
-                htmlFor="collegeId" 
+                htmlFor="rollNumber" 
                 className="text-sm font-medium text-foreground"
               >
-                College ID
+                Roll Number
               </Label>
               <Input
-                id="collegeId"
+                id="rollNumber"
                 type="text"
-                value={collegeId}
-                onChange={(e) => setCollegeId(e.target.value)}
-                placeholder="Enter your college ID"
+                value={rollNumber}
+                onChange={(e) => setRollNumber(e.target.value)}
+                placeholder="Enter your roll number"
                 className="h-12 rounded-2xl bg-input border-border focus-visible:ring-ring transition-[var(--transition-smooth)]"
                 required
                 disabled={isLoading}
