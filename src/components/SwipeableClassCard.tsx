@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSwipeable } from "react-swipeable";
 import { motion } from "framer-motion";
-import { CheckCircle2, XCircle, Clock, Lock } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Lock, Ban, RefreshCw, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SwipeableClassCardProps {
@@ -15,11 +15,12 @@ interface SwipeableClassCardProps {
     room: string;
     class_type: string;
   };
-  status?: "present" | "absent" | "pending" | null;
+  status?: "present" | "absent" | "cancelled" | "swapped" | "rescheduled" | null;
   isPast: boolean;
   isCurrent: boolean;
   canMark: boolean;
   onSwipe: (direction: "left" | "right") => void;
+  onTap?: () => void;
 }
 
 export const SwipeableClassCard = ({
@@ -29,6 +30,7 @@ export const SwipeableClassCard = ({
   isCurrent,
   canMark,
   onSwipe,
+  onTap,
 }: SwipeableClassCardProps) => {
   const [swipeOffset, setSwipeOffset] = useState(0);
 
@@ -57,16 +59,20 @@ export const SwipeableClassCard = ({
   const getStatusIcon = () => {
     if (status === "present") return <CheckCircle2 className="w-5 h-5 text-green-600" />;
     if (status === "absent") return <XCircle className="w-5 h-5 text-red-600" />;
+    if (status === "cancelled") return <Ban className="w-5 h-5 text-orange-600" />;
+    if (status === "swapped") return <RefreshCw className="w-5 h-5 text-blue-600" />;
+    if (status === "rescheduled") return <Calendar className="w-5 h-5 text-purple-600" />;
     if (isPast) return <Clock className="w-5 h-5 text-muted-foreground" />;
     if (!canMark) return <Lock className="w-5 h-5 text-muted-foreground" />;
     return null;
   };
 
   const getBackgroundColor = () => {
-    if (swipeOffset > 50) return "rgba(34, 197, 94, 0.1)"; // green
-    if (swipeOffset < -50) return "rgba(239, 68, 68, 0.1)"; // red
-    if (status === "present") return "hsl(var(--secondary))";
-    if (status === "absent") return "hsl(var(--secondary))";
+    if (swipeOffset > 50) return "rgba(34, 197, 94, 0.1)";
+    if (swipeOffset < -50) return "rgba(239, 68, 68, 0.1)";
+    if (status === "present" || status === "absent" || status === "cancelled" || status === "swapped" || status === "rescheduled") {
+      return "hsl(var(--secondary))";
+    }
     if (isCurrent) return "hsl(var(--accent) / 0.2)";
     return "hsl(var(--card))";
   };
@@ -79,10 +85,11 @@ export const SwipeableClassCard = ({
         backgroundColor: getBackgroundColor(),
       }}
       className={cn(
-        "relative rounded-2xl shadow-[var(--shadow-soft)] p-4 cursor-grab active:cursor-grabbing transition-colors",
-        isPast && "opacity-60",
-        !canMark && "cursor-not-allowed"
+        "relative rounded-2xl shadow-[var(--shadow-soft)] p-4 transition-colors",
+        canMark ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+        isPast && "opacity-60"
       )}
+      onClick={() => onTap && onTap()}
     >
       {/* Swipe Indicators */}
       {canMark && (
@@ -142,12 +149,16 @@ export const SwipeableClassCard = ({
               "px-3 py-1 rounded-full text-xs font-medium",
               status === "present" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
               status === "absent" && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-              status === "pending" && "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+              status === "cancelled" && "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+              status === "swapped" && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+              status === "rescheduled" && "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
             )}
           >
             {status === "present" && "Marked Present"}
             {status === "absent" && "Marked Absent"}
-            {status === "pending" && "Pending"}
+            {status === "cancelled" && "Class Cancelled"}
+            {status === "swapped" && "Class Swapped"}
+            {status === "rescheduled" && "Rescheduled"}
           </div>
         </div>
       )}
@@ -155,7 +166,7 @@ export const SwipeableClassCard = ({
       {/* Helper text */}
       {canMark && !status && (
         <p className="mt-3 text-xs text-muted-foreground text-center">
-          ← Swipe left for Absent | Swipe right for Present →
+          Tap for options or swipe: ← Absent | Present →
         </p>
       )}
     </motion.div>

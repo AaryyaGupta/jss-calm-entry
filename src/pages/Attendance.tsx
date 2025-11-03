@@ -81,11 +81,11 @@ const Attendance = () => {
 
       attendanceRecords.forEach((record) => {
         const timetableEntry = timetableEntries.find(t => t.id === record.timetable_id);
-        if (timetableEntry) {
+        if (timetableEntry && record.status !== "cancelled" && record.status !== "swapped") {
           const subjectData = subjectMap.get(timetableEntry.subject_code);
           if (subjectData) {
             subjectData.total++;
-            if (record.status === "present") subjectData.present++;
+            if (record.status === "present" || record.status === "rescheduled") subjectData.present++;
             if (record.status === "absent") subjectData.absent++;
             subjectData.percentage = (subjectData.present / subjectData.total) * 100;
           }

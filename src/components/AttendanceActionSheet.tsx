@@ -5,7 +5,7 @@ import { CheckCircle2, XCircle, Ban, RefreshCw } from "lucide-react";
 interface AttendanceActionSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (action: "present" | "absent" | "cancelled" | "swapped") => void;
+  onSelect: (action: "present" | "absent" | "cancelled" | "swapped" | "rescheduled") => void;
   classInfo: {
     subject_name: string;
     start_time: string;
@@ -21,7 +21,7 @@ export const AttendanceActionSheet = ({
 }: AttendanceActionSheetProps) => {
   if (!classInfo) return null;
 
-  const handleSelect = (action: "present" | "absent" | "cancelled" | "swapped") => {
+  const handleSelect = (action: "present" | "absent" | "cancelled" | "swapped" | "rescheduled") => {
     onSelect(action);
   };
 

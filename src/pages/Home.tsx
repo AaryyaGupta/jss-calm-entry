@@ -6,9 +6,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Calendar, Clock, LogOut, User, BookOpen, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SwipeableClassCard } from "@/components/SwipeableClassCard";
+import { AttendanceActionSheet } from "@/components/AttendanceActionSheet";
+import { RescheduleDialog, RescheduleData } from "@/components/RescheduleDialog";
+import { SwapSelectionDialog } from "@/components/SwapSelectionDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format, isToday } from "date-fns";
+import { format } from "date-fns";
 
 interface ClassInfo {
   id: string;
@@ -23,7 +26,8 @@ interface ClassInfo {
 
 interface AttendanceStatus {
   timetable_id: string;
-  status: "present" | "absent" | "pending";
+  status: "present" | "absent" | "cancelled" | "swapped" | "rescheduled";
+  modification_id?: string;
 }
 
 const Home = () => {
@@ -35,6 +39,10 @@ const Home = () => {
   const [todayClasses, setTodayClasses] = useState<ClassInfo[]>([]);
   const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatus[]>([]);
   const [attendancePercentage, setAttendancePercentage] = useState(0);
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [selectedClass, setSelectedClass] = useState<ClassInfo | null>(null);
+  const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
+  const [swapDialogOpen, setSwapDialogOpen] = useState(false);
 
   useEffect(() => {
     checkUser();
@@ -119,22 +127,47 @@ const Home = () => {
     }
   };
 
-  const handleSwipe = async (classInfo: ClassInfo, direction: "left" | "right") => {
+  const handleClassTap = (classInfo: ClassInfo) => {
+    const attendance = attendanceStatus.find(a => a.timetable_id === classInfo.id);
+    if (!attendance && canMarkAttendance(classInfo.start_time)) {
+      setSelectedClass(classInfo);
+      setActionSheetOpen(true);
+    }
+  };
+
+  const handleAttendanceAction = async (
+    action: "present" | "absent" | "cancelled" | "swapped" | "rescheduled",
+    modificationId?: string
+  ) => {
+    if (!selectedClass) return;
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const status = direction === "right" ? "present" : "absent";
     const todayDate = format(new Date(), "yyyy-MM-dd");
 
     try {
+      if (action === "cancelled") {
+        setActionSheetOpen(false);
+        setRescheduleDialogOpen(true);
+        return;
+      }
+
+      if (action === "swapped") {
+        setActionSheetOpen(false);
+        setSwapDialogOpen(true);
+        return;
+      }
+
       const { error } = await supabase
         .from("attendance_records")
         .upsert({
           student_id: user.id,
-          timetable_id: classInfo.id,
+          timetable_id: selectedClass.id,
           date: todayDate,
-          status,
+          status: action,
           marked_at: new Date().toISOString(),
+          modification_id: modificationId || null,
         }, {
           onConflict: 'student_id,timetable_id,date'
         });
@@ -142,18 +175,13 @@ const Home = () => {
       if (error) throw error;
 
       toast({
-        title: `Marked ${status}`,
-        description: `${classInfo.subject_name} - ${status === "present" ? "✓" : "✗"}`,
+        title: `Marked ${action}`,
+        description: `${selectedClass.subject_name}`,
       });
 
-      // Refresh attendance status
-      const { data: attendance } = await supabase
-        .from("attendance_records")
-        .select("timetable_id, status")
-        .eq("student_id", user.id)
-        .eq("date", todayDate);
-
-      setAttendanceStatus((attendance || []) as AttendanceStatus[]);
+      await refreshAttendance(user.id, todayDate);
+      setActionSheetOpen(false);
+      setSelectedClass(null);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -163,14 +191,124 @@ const Home = () => {
     }
   };
 
+  const handleSwipe = async (classInfo: ClassInfo, direction: "left" | "right") => {
+    const status = direction === "right" ? "present" : "absent";
+    setSelectedClass(classInfo);
+    await handleAttendanceAction(status);
+  };
+
+  const handleCancelledClass = async (data: RescheduleData) => {
+    if (!selectedClass) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const todayDate = format(new Date(), "yyyy-MM-dd");
+
+      if (data.wasRescheduled) {
+        const { data: modification, error: modError } = await supabase
+          .from("class_modifications")
+          .insert({
+            student_id: user.id,
+            original_timetable_id: selectedClass.id,
+            original_date: todayDate,
+            modification_type: "rescheduled",
+            rescheduled_date: data.newDate,
+            rescheduled_start_time: data.newStartTime,
+            rescheduled_end_time: data.newEndTime,
+            rescheduled_room: data.room,
+            notes: data.notes,
+          })
+          .select()
+          .single();
+
+        if (modError) throw modError;
+
+        await handleAttendanceAction("rescheduled", modification.id);
+      } else {
+        const { data: modification, error: modError } = await supabase
+          .from("class_modifications")
+          .insert({
+            student_id: user.id,
+            original_timetable_id: selectedClass.id,
+            original_date: todayDate,
+            modification_type: "cancelled",
+          })
+          .select()
+          .single();
+
+        if (modError) throw modError;
+
+        await handleAttendanceAction("cancelled", modification.id);
+      }
+
+      setRescheduleDialogOpen(false);
+      setSelectedClass(null);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSwappedClass = async (swappedWithId: string) => {
+    if (!selectedClass) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const todayDate = format(new Date(), "yyyy-MM-dd");
+
+      const { data: modification, error: modError } = await supabase
+        .from("class_modifications")
+        .insert({
+          student_id: user.id,
+          original_timetable_id: selectedClass.id,
+          original_date: todayDate,
+          modification_type: "swapped",
+          swapped_with_timetable_id: swappedWithId,
+        })
+        .select()
+        .single();
+
+      if (modError) throw modError;
+
+      await handleAttendanceAction("swapped", modification.id);
+      setSwapDialogOpen(false);
+      setSelectedClass(null);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const refreshAttendance = async (userId: string, date: string) => {
+    const { data: attendance } = await supabase
+      .from("attendance_records")
+      .select("timetable_id, status, modification_id")
+      .eq("student_id", userId)
+      .eq("date", date);
+
+    setAttendanceStatus((attendance || []) as AttendanceStatus[]);
+  };
+
   const canMarkAttendance = (startTime: string) => {
     const now = new Date();
     const [hours, minutes] = startTime.split(":").map(Number);
     const classTime = new Date();
     classTime.setHours(hours, minutes, 0);
     
-    const diff = (now.getTime() - classTime.getTime()) / (1000 * 60);
-    return diff >= -30 && diff <= 30;
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59);
+    
+    return now >= classTime && now <= endOfDay;
   };
 
   const isClassPast = (endTime: string) => {
@@ -314,6 +452,7 @@ const Home = () => {
                   isCurrent={isCurrent}
                   canMark={canMark}
                   onSwipe={(direction) => handleSwipe(classInfo, direction)}
+                  onTap={() => handleClassTap(classInfo)}
                 />
               );
             })
@@ -336,12 +475,44 @@ const Home = () => {
             <BarChart3 className="w-5 h-5 mb-1" />
             <span className="text-xs">Attendance</span>
           </Button>
-          <Button variant="ghost" size="sm" className="flex-col h-auto py-2">
+          <Button variant="ghost" size="sm" className="flex-col h-auto py-2" onClick={() => navigate("/profile")}>
             <User className="w-5 h-5 mb-1" />
             <span className="text-xs">Profile</span>
           </Button>
         </div>
       </div>
+
+      {/* Dialogs */}
+      <AttendanceActionSheet
+        isOpen={actionSheetOpen}
+        onClose={() => {
+          setActionSheetOpen(false);
+          setSelectedClass(null);
+        }}
+        onSelect={handleAttendanceAction}
+        classInfo={selectedClass}
+      />
+
+      <RescheduleDialog
+        isOpen={rescheduleDialogOpen}
+        onClose={() => {
+          setRescheduleDialogOpen(false);
+          setSelectedClass(null);
+        }}
+        onConfirm={handleCancelledClass}
+        classInfo={selectedClass || { subject_name: "", start_time: "", end_time: "" }}
+      />
+
+      <SwapSelectionDialog
+        isOpen={swapDialogOpen}
+        onClose={() => {
+          setSwapDialogOpen(false);
+          setSelectedClass(null);
+        }}
+        onConfirm={handleSwappedClass}
+        currentClass={selectedClass as any}
+        availableClasses={todayClasses.filter(c => c.id !== selectedClass?.id)}
+      />
     </div>
   );
 };
