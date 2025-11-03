@@ -20,6 +20,7 @@ export type Database = {
           date: string
           id: string
           marked_at: string | null
+          modification_id: string | null
           status: string
           student_id: string
           timetable_id: string
@@ -30,6 +31,7 @@ export type Database = {
           date: string
           id?: string
           marked_at?: string | null
+          modification_id?: string | null
           status: string
           student_id: string
           timetable_id: string
@@ -40,12 +42,20 @@ export type Database = {
           date?: string
           id?: string
           marked_at?: string | null
+          modification_id?: string | null
           status?: string
           student_id?: string
           timetable_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_records_modification_id_fkey"
+            columns: ["modification_id"]
+            isOneToOne: false
+            referencedRelation: "class_modifications"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_records_student_id_fkey"
             columns: ["student_id"]
@@ -56,6 +66,76 @@ export type Database = {
           {
             foreignKeyName: "attendance_records_timetable_id_fkey"
             columns: ["timetable_id"]
+            isOneToOne: false
+            referencedRelation: "timetable"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_modifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          modification_type: string
+          notes: string | null
+          original_date: string
+          original_timetable_id: string
+          rescheduled_date: string | null
+          rescheduled_end_time: string | null
+          rescheduled_room: string | null
+          rescheduled_start_time: string | null
+          student_id: string
+          swapped_with_timetable_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          modification_type: string
+          notes?: string | null
+          original_date: string
+          original_timetable_id: string
+          rescheduled_date?: string | null
+          rescheduled_end_time?: string | null
+          rescheduled_room?: string | null
+          rescheduled_start_time?: string | null
+          student_id: string
+          swapped_with_timetable_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          modification_type?: string
+          notes?: string | null
+          original_date?: string
+          original_timetable_id?: string
+          rescheduled_date?: string | null
+          rescheduled_end_time?: string | null
+          rescheduled_room?: string | null
+          rescheduled_start_time?: string | null
+          student_id?: string
+          swapped_with_timetable_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_modifications_original_timetable_id_fkey"
+            columns: ["original_timetable_id"]
+            isOneToOne: false
+            referencedRelation: "timetable"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_modifications_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_modifications_swapped_with_timetable_id_fkey"
+            columns: ["swapped_with_timetable_id"]
             isOneToOne: false
             referencedRelation: "timetable"
             referencedColumns: ["id"]
