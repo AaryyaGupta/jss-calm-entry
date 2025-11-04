@@ -76,7 +76,7 @@ const Timetable = () => {
     return timetable.filter(
       (entry) =>
         entry.day_of_week === dayIndex &&
-        entry.start_time.startsWith(time)
+        entry.start_time.substring(0, 5) === time
     );
   };
 
