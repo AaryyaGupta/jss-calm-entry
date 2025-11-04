@@ -26,7 +26,7 @@ const Timetable = () => {
   const [userSection, setUserSection] = useState<string>("");
 
   const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const timeSlots = ["08:45", "09:45", "10:45", "11:45", "13:45", "14:45", "15:45"];
+  const timeSlots = ["08:45", "09:45", "10:45", "11:45", "12:45", "13:45", "14:45", "15:45", "16:45"];
 
   useEffect(() => {
     checkUserAndFetchTimetable();
