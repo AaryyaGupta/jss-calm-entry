@@ -147,10 +147,10 @@ const Timetable = () => {
                     <td className="p-3 text-sm font-medium text-foreground whitespace-nowrap">
                       {time}
                     </td>
-                    {daysOfWeek.map((_, dayIndex) => {
-                      const classes = getClassesForDayAndTime(dayIndex, time);
+                    {[0, 1, 2, 3, 4, 5].map((dayOfWeek) => {
+                      const classes = getClassesForDayAndTime(dayOfWeek, time);
                       return (
-                        <td key={dayIndex} className="p-2">
+                        <td key={dayOfWeek} className="p-2">
                           {classes.map((classInfo) => (
                             <div
                               key={classInfo.id}
