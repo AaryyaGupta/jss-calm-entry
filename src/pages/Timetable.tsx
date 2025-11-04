@@ -72,10 +72,10 @@ const Timetable = () => {
     }
   };
 
-  const getClassesForDayAndTime = (day: number, time: string) => {
+  const getClassesForDayAndTime = (dayIndex: number, time: string) => {
     return timetable.filter(
       (entry) =>
-        entry.day_of_week === day &&
+        entry.day_of_week === dayIndex &&
         entry.start_time.startsWith(time)
     );
   };
