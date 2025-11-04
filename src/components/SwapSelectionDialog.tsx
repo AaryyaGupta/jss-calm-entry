@@ -43,17 +43,18 @@ export const SwapSelectionDialog = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <RefreshCw className="h-5 w-5 text-blue-600" />
-            Class Swap
-          </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            {currentClass.subject_name} was swapped
-          </p>
-        </DialogHeader>
+    <Dialog open={isOpen && !!currentClass} onOpenChange={handleClose}>
+      {currentClass && (
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-blue-600" />
+              Class Swap
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {currentClass.subject_name} was swapped
+            </p>
+          </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
@@ -99,7 +100,8 @@ export const SwapSelectionDialog = ({
             </Button>
           </div>
         </div>
-      </DialogContent>
+        </DialogContent>
+      )}
     </Dialog>
   );
 };
