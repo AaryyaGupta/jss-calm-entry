@@ -19,21 +19,20 @@ export const AttendanceActionSheet = ({
   onSelect,
   classInfo,
 }: AttendanceActionSheetProps) => {
-  if (!classInfo) return null;
-
   const handleSelect = (action: "present" | "absent" | "cancelled" | "swapped" | "rescheduled") => {
     onSelect(action);
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Mark Attendance</DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            {classInfo.subject_name} • {classInfo.start_time}-{classInfo.end_time}
-          </p>
-        </DialogHeader>
+    <Dialog open={isOpen && !!classInfo} onOpenChange={onClose}>
+      {classInfo && (
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mark Attendance</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {classInfo.subject_name} • {classInfo.start_time}-{classInfo.end_time}
+            </p>
+          </DialogHeader>
 
         <div className="grid gap-3 py-4">
           <Button
@@ -72,7 +71,8 @@ export const AttendanceActionSheet = ({
             Cancel
           </Button>
         </div>
-      </DialogContent>
+        </DialogContent>
+      )}
     </Dialog>
   );
 };
