@@ -29,7 +29,7 @@ const Register = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const branchOptions = [
-    { value: "CSE Core", label: "CSE Core", sections: ["A2", "A3"] },
+    { value: "CSE Core", label: "CSE Core", sections: ["A1", "A2", "A3"] },
     { value: "CS-AIML", label: "CS-AIML", sections: ["A4", "A5", "A6"] },
     { value: "IT", label: "IT", sections: ["B1", "B2", "B3"] },
     { value: "CS-DS", label: "CS-DS", sections: ["B4"] },

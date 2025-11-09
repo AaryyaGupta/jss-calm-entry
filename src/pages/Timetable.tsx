@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import HolidayCalendar from "@/components/HolidayCalendar";
 
 interface TimetableEntry {
   id: string;
@@ -191,6 +192,11 @@ const Timetable = () => {
             <div className="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/30"></div>
             <span className="text-xs text-muted-foreground">Tutorial</span>
           </div>
+        </div>
+
+        {/* Holiday Calendar */}
+        <div className="mt-8">
+          <HolidayCalendar />
         </div>
       </div>
     </div>

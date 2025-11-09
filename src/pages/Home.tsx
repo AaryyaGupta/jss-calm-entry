@@ -386,11 +386,10 @@ const Home = () => {
           </Button>
         </div>
 
-        <div>
-          <h1 className="text-3xl font-bold text-foreground mb-1">
-            {getGreeting()},
+        <div className="flex items-center flex-wrap justify-center md:justify-start">
+          <h1 className="text-3xl font-bold text-foreground">
+            {getGreeting()}, {userName}.
           </h1>
-          <h2 className="text-3xl font-bold text-foreground">{userName}.</h2>
         </div>
       </div>
 
